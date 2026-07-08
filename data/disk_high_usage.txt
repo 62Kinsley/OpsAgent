@@ -1,0 +1,189 @@
+# High Disk Usage Alert Runbook
+
+## Alert Definition
+- **Alert name**: `HighDiskUsage`
+- **Severity**: Warning (> 80%) / Critical (> 90%)
+- **Trigger condition**: Disk usage stays above the threshold for more than 5 minutes
+
+## Problem Description
+High disk usage can cause:
+- Inability to write new data
+- Logs failing to be recorded
+- Application crashes
+- Database corruption
+- Degraded system performance
+
+## Investigation Steps
+
+### Step 1: Determine the alert time window
+Record the alert time to scope later queries.
+
+### Step 2: Query system disk metrics
+Query the `system-metrics` source for the last 30 minutes.
+- **Filter**: `disk_usage:>80 OR disk_full:true`
+- **Goal**: identify which mount points crossed the threshold.
+
+### Step 3: Query application logs
+Query `application-logs` with filter `"No space left on device" OR "disk full"`.
+
+### Step 4: Analyze disk consumption
+From logs and the host, analyze:
+- Which directory uses the most space
+- Log file sizes
+- Number of temporary files
+- Data file growth trend
+
+## Common Root Causes
+
+### Cause 1: Oversized log files
+**Symptoms**:
+- `/var/log` consumes a lot of space
+- Application log files keep growing
+- Log rotation is missing or failing
+- Log level is set to DEBUG
+
+**Remediation**:
+1. **Clean up immediately**:
+   ```bash
+   # Find large log files
+   find /var/log -type f -size +100M
+
+   # Truncate a log file (keep the file)
+   > /var/log/application.log
+
+   # Compress old logs
+   gzip /var/log/*.log.1
+
+   # Delete logs older than 7 days
+   find /var/log -name "*.log.*" -mtime +7 -delete
+   ```
+2. **Configure log rotation**: enable logrotate, set retention days, compress, and cap single-file size
+3. **Optimize log level**: use INFO/WARN in production and avoid logging large objects
+
+### Cause 2: Temporary file buildup
+**Symptoms**:
+- `/tmp` uses a lot of space
+- Many uncleaned temp files
+- Upload temp directory is full
+- Too many cache files
+
+**Remediation**:
+1. **Clean temp files**:
+   ```bash
+   find /tmp -type f -size +100M
+   find /tmp -type f -mtime +7 -delete
+   rm -rf /app/temp/*
+   ```
+2. **Clean regularly**: scheduled cleanup, cleanup on app startup, delete temp files right after processing
+3. **Reduce temp usage**: prefer streaming, cap temp file size, use in-memory buffers where possible
+
+### Cause 3: Fast-growing data files
+**Symptoms**:
+- Database files keep growing
+- Business data volume surges
+- No archiving strategy
+- Historical data never cleaned
+
+**Remediation**:
+1. **Data cleanup**: delete expired data, archive history, remove test data
+2. **Data archiving**: build an archiving policy, move cold data to object storage, separate hot/cold data
+3. **Expand disk**: for legitimate growth, expand the volume (cloud disks support online resize)
+
+### Cause 4: Backup files consuming space
+**Symptoms**:
+- Backup directory uses a lot of space
+- Many historical backups
+- Backups are not compressed or moved off-host
+
+**Remediation**:
+1. **Clean old backups**:
+   ```bash
+   find /backup -name "*.bak" -mtime +30 -delete
+   ```
+2. **Optimize backup policy**: keep only the last N days, compress backups, use incremental backups
+3. **Offload backups** to dedicated or cloud storage
+
+### Cause 5: Excessive application cache files
+**Symptoms**:
+- Cache directory uses a lot of space
+- Cache files never expire
+- Poor cache strategy
+
+**Remediation**:
+1. **Clean caches**:
+   ```bash
+   rm -rf /app/cache/*
+   docker system prune -a
+   ```
+2. **Optimize strategy**: set expiration, cap cache size, use LRU eviction, move to Redis
+
+### Cause 6: Docker images and containers
+**Symptoms**:
+- Docker uses a lot of disk
+- Many unused images
+- Stopped containers not cleaned
+- Container logs too large
+
+**Remediation**:
+1. **Clean Docker resources**:
+   ```bash
+   docker image prune -a
+   docker container prune
+   docker volume prune
+   docker system prune -a --volumes
+   ```
+2. **Limit container logs**: configure the log driver, cap log size, enable rotation
+3. **Optimize images**: multi-stage builds, smaller base images, remove old images
+
+## Emergency Actions
+
+### Immediate (within 5 minutes)
+1. **Quick cleanup**: delete large logs, clear temp files, remove unneeded files
+2. **Find what is using space**:
+   ```bash
+   du -ah / | sort -rh | head -n 10
+   du -h --max-depth=1 / | sort -rh | head -n 10
+   ```
+3. **Emergency expansion**: if cleanup is not enough, expand the disk immediately
+
+### Short term (within 30 minutes)
+1. **System cleanup**: package-manager cache, system logs, core dumps
+2. **App optimization**: configure log rotation, clear caches, delete expired data
+3. **Monitoring**: add disk-usage alerts and track growth trends
+
+### Long term
+1. **Automated cleanup**: scheduled cleanup jobs and auto log rotation
+2. **Capacity planning**: plan capacity to business growth, keep headroom, enable elastic expansion
+3. **Better monitoring**: per-directory usage tracking and trend-based early alerts
+
+## Useful Commands
+
+### Check disk usage
+```bash
+df -h                 # filesystem usage
+du -sh /var/log       # directory size
+find / -type f -size +1G   # find large files
+df -i                 # inode usage
+```
+
+### Cleanup commands
+```bash
+> /var/log/large.log          # truncate a file
+find /path -mtime +N -delete  # delete files older than N days
+gzip /var/log/*.log           # compress logs
+yum clean all                 # CentOS
+apt-get clean                 # Ubuntu
+```
+
+## Verification
+1. Confirm disk usage drops to a safe level (< 70%)
+2. Check the application runs normally
+3. Verify logs can be written again
+4. Confirm the database is healthy
+5. Keep monitoring disk usage
+
+## Related Alerts
+- `InodeFull`: inodes exhausted
+- `DiskIOHigh`: disk I/O too high
+- `DiskReadOnly`: filesystem mounted read-only
+- `FileSystemError`: filesystem error

@@ -1,0 +1,150 @@
+# Service Unavailable Alert Runbook
+
+## Alert Definition
+- **Alert name**: `ServiceUnavailable`
+- **Severity**: Emergency
+- **Trigger condition**: Health check fails or error rate exceeds 50%
+
+## Problem Description
+Service unavailability is the most severe type of incident and can cause:
+- Users unable to access the service
+- Complete business interruption
+- Potential financial loss
+- Damage to company reputation
+
+## Investigation Steps
+
+### Step 1: Determine the alert time window
+Record when the outage started for later analysis.
+
+### Step 2: Query service status logs
+Query `application-logs` for the last 15 minutes.
+- **Filter**: `level:ERROR OR level:FATAL OR status:500`
+- **Goal**: find fatal errors and 5xx responses across instances.
+
+### Step 3: Query system event logs
+Query `system-events` with filter `event:restart OR event:crash OR event:oom_kill`.
+
+### Step 4: Check dependency status
+Query `application-logs` with filter `downstream_service OR database OR redis OR mq` to detect dependency failures.
+
+## Common Root Causes
+
+### Cause 1: Application crash or failure to start
+**Symptoms**:
+- All instances fail to respond
+- Startup-failure records in logs
+- Possible OOM or other fatal errors
+- All health checks failing
+
+**Remediation**:
+1. **Roll back immediately** to the last stable version if it happened right after a release (use blue-green or canary)
+2. **Emergency fix**: inspect startup logs, verify config files, confirm dependencies are up, then redeploy
+3. **Temporary measures**: enable a standby service or show a maintenance page
+
+### Cause 2: Database connection failure
+**Symptoms**:
+- Database connection errors in logs
+- "Connection refused" or "Too many connections"
+- Database service is abnormal
+- Connection pool exhausted
+
+**Remediation**:
+1. **Check DB status**: confirm the service is running, check connection count, review DB error logs
+2. **Recover connectivity**: restart DB if necessary, raise max connections, kill zombie connections, check network
+3. **App-side**: restart the app to rebuild the pool, tune pool config, add connection retries
+
+### Cause 3: Dependency failure
+**Symptoms**:
+- Third-party call failures in logs
+- Redis / MQ or other middleware unavailable
+- Network timeouts
+- Cascading failure
+
+**Remediation**:
+1. **Fast degradation**: open the circuit breaker, skip non-critical dependencies, serve cached data
+2. **Recover dependencies**: check Redis/MQ status, restart failed dependencies, fix network issues
+3. **Isolate the fault**: prevent it from spreading, limit retries, enforce timeouts
+
+### Cause 4: Configuration error
+**Symptoms**:
+- A recent config change
+- Config-load errors in logs
+- Missing environment variables
+- Wrong startup parameters
+
+**Remediation**:
+1. **Roll back config** to the last known-good version and validate syntax
+2. **Fix config**: diff against a correct file, correct the wrong items, reload
+3. **Config management**: use a config center, require approval for changes, keep version history
+
+### Cause 5: Resource exhaustion
+**Symptoms**:
+- Disk full
+- File descriptors exhausted
+- Port already in use
+- OOM from insufficient memory
+
+**Remediation**:
+1. **Reclaim resources**: clear disk space, release file descriptors, kill the process holding the port
+2. **Expand resources**: add disk, raise `ulimit`, increase memory
+3. **Optimize usage**: log rotation, close file handles promptly, reduce memory footprint
+
+### Cause 6: Network failure
+**Symptoms**:
+- Service unreachable
+- Connection timeouts
+- Load balancer abnormal
+- DNS resolution failing
+
+**Remediation**:
+1. **Check network**: test connectivity (ping/telnet), check firewall and security groups, verify DNS
+2. **Fix network**: restart network services, correct routing, update the load balancer, fail over to a backup link
+3. **Traffic switch**: fail over to a backup region or domain, enable CDN
+
+## Emergency Response Flow
+
+### Within 1 minute
+1. **Confirm the outage** via monitoring and logs
+2. **Start incident response** and notify the on-call team
+3. **Stop the bleeding**: remove faulty instances, or show a maintenance page if all are down
+
+### Within 5 minutes
+1. **Locate quickly** using logs and monitoring
+2. **Decide**: fix if fast, otherwise roll back; if a dependency fails, degrade
+
+### Within 15 minutes
+1. **Restore service** via rollback, fix, or degradation
+2. **Verify** core functionality
+3. **Monitor** service status continuously
+
+### Within 30 minutes
+1. **Full verification** of all functionality
+2. **Notify users** if they were impacted
+3. **Preliminary summary** of cause and handling
+
+## Verification
+1. **Health check**: all instances pass
+2. **Functional test**: core business flows work
+3. **Performance**: latency and throughput are normal
+4. **Error rate**: back to normal (< 1%)
+5. **Monitor** for 30 minutes to confirm stability
+
+## Postmortem
+After recovery, always run a postmortem:
+1. **Timeline**: when it started, was detected, was handled, and recovered
+2. **Root cause analysis**
+3. **Impact assessment**: scope and losses
+4. **Action items** to prevent recurrence
+5. **Docs update**: refresh runbooks and playbooks
+
+## Related Alerts
+- `HighErrorRate`: error rate too high
+- `HealthCheckFailed`: health check failing
+- `AllInstancesDown`: all instances offline
+- `DatabaseConnectionFailed`: database connection failure
+
+## Escalation Policy
+- **Not recovered in 15 min**: escalate to the engineering lead
+- **Not recovered in 30 min**: escalate to the CTO
+- **Not recovered in 1 hour**: trigger the highest-level incident response

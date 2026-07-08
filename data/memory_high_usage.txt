@@ -1,0 +1,149 @@
+# High Memory Usage Alert Runbook
+
+## Alert Definition
+- **Alert name**: `HighMemoryUsage`
+- **Severity**: Critical
+- **Trigger condition**: Memory usage stays above 85% for more than 5 minutes
+
+## Problem Description
+When the memory usage of a host or container stays above 85% for a sustained period, it may cause:
+- Frequent garbage collection (GC)
+- Out Of Memory (OOM) errors
+- Application crashes or restarts
+- Heavy swapping and a sharp drop in performance
+
+## Investigation Steps
+
+### Step 1: Determine the alert time window
+Establish the exact start time of the alert to scope later queries.
+
+### Step 2: Query system metrics
+Query the `system-metrics` source for the last 30 minutes.
+- **Filter**: `memory_usage:>85 OR event:OOM`
+- **Goal**: confirm which instances exceeded the memory threshold and whether OOM kills occurred.
+
+### Step 3: Query application logs
+Query `application-logs` with filter `OutOfMemoryError OR "GC overhead"` to find memory-related failures.
+
+### Step 4: Analyze memory behavior
+From logs and metrics, extract:
+- JVM heap usage
+- GC frequency and pause time
+- Signs of a memory leak
+- Large-object allocation records
+
+## Common Root Causes
+
+### Cause 1: Memory leak
+**Symptoms**:
+- Memory usage climbs slowly and steadily
+- Memory is not released even after Full GC
+- The longer the app runs, the higher memory usage becomes
+- Many GC records in the logs
+
+**Remediation**:
+1. **Emergency**: restart the application to release memory
+2. **Capture a heap dump** before restarting
+3. **Analyze** the heap dump with a tool such as MAT
+4. **Locate** the code holding large object references
+5. **Fix and redeploy** the leaking code
+
+### Cause 2: Object surge from a traffic spike
+**Symptoms**:
+- Memory usage jumps suddenly
+- Growth is aligned with a traffic increase
+- GC can reclaim most of the memory
+- Logs show a request-volume spike
+
+**Remediation**:
+1. **Scale out** application instances
+2. **Enable rate limiting** to protect the system
+3. **Review cache strategy** for reasonableness
+4. **Increase memory** if it is legitimate business growth
+
+### Cause 3: Improper cache configuration
+**Symptoms**:
+- Cache consumes too much memory
+- Low cache hit ratio
+- Cached data never expires
+- Cache-related warnings in logs
+
+**Remediation**:
+1. **Reduce cache size** limits
+2. **Set a reasonable TTL**
+3. **Enable LRU eviction**
+4. **Monitor** cache hit ratio and memory footprint
+
+### Cause 4: Large file or big-data processing
+**Symptoms**:
+- Memory spikes at specific times
+- Logs show file uploads or data imports
+- Memory is released after processing completes
+- Correlated with scheduled jobs or user actions
+
+**Remediation**:
+1. **Use streaming** instead of loading everything at once
+2. **Limit file size** for uploads
+3. **Process in batches**
+4. **Offload** heavy processing to a background queue
+
+### Cause 5: Poor JVM configuration
+**Symptoms**:
+- Heap is configured too small
+- Young/old generation ratio is inappropriate
+- Wrong GC algorithm for the workload
+- Metaspace overflow
+
+**Remediation**:
+1. **Tune heap size** (`-Xmx` / `-Xms`)
+2. **Choose a suitable GC algorithm**
+3. **Adjust generation ratio** (`-XX:NewRatio`)
+4. **Increase Metaspace** (`-XX:MetaspaceSize`)
+
+## Emergency Actions
+
+### Immediate (within 5 minutes)
+1. **Restart** the high-memory instance to quickly free memory
+2. **Scale out** to spread the memory pressure
+3. **Rate limit** if it is a traffic problem
+
+### Short term (within 30 minutes)
+1. **Analyze logs** to find the root cause of memory growth
+2. **Capture a heap dump** to preserve the crime scene
+3. **Tune JVM parameters** if it is a config issue
+4. **Clear caches** that are not needed
+
+### Long term
+1. **Optimize code** to fix leaks and reduce object churn
+2. **Improve monitoring** with more memory metrics and alerts
+3. **Run memory load tests** regularly
+4. **Capacity planning** based on business growth
+
+## Verification
+1. Confirm memory usage drops to a normal level (< 70%)
+2. Check GC frequency and pause time are normal
+3. Confirm no OOM errors in application logs
+4. Monitor for 30 minutes to ensure stability
+
+## Useful Commands
+
+### Inspect JVM heap
+```bash
+jmap -heap <pid>
+```
+
+### Generate a heap dump
+```bash
+jmap -dump:format=b,file=heap.hprof <pid>
+```
+
+### Watch GC activity
+```bash
+jstat -gc <pid> 1000
+```
+
+## Related Alerts
+- `HighCPUUsage`: CPU usage too high (often accompanied by frequent GC)
+- `FrequentGC`: GC happening too often
+- `OOMError`: out-of-memory error
+- `SlowResponse`: response time too long

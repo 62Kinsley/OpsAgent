@@ -1,0 +1,153 @@
+# Slow Response Time Alert Runbook
+
+## Alert Definition
+- **Alert name**: `SlowResponse`
+- **Severity**: Warning
+- **Trigger condition**: P99 response time stays above 3 seconds for more than 5 minutes
+
+## Problem Description
+When response time stays above the threshold, it can cause:
+- Degraded user experience
+- Request backlog
+- Timeout errors
+- Impact on downstream services
+
+## Investigation Steps
+
+### Step 1: Determine the alert time window
+Establish the exact alert time.
+
+### Step 2: Query application performance logs
+Query `application-logs` for the last 30 minutes.
+- **Filter**: `response_time:>3000 OR slow_query:true`
+- **Goal**: find which endpoints are slow.
+
+### Step 3: Query database slow-query logs
+Query `database-slow-query` over the same range with filter `query_time:>1000`.
+
+### Step 4: Query system resource metrics
+Query `system-metrics` with filter `cpu_usage OR memory_usage OR disk_io` to correlate slowness with resource pressure.
+
+## Common Root Causes
+
+### Cause 1: Slow database queries
+**Symptoms**:
+- Many entries in the slow-query log
+- High database CPU
+- Specific SQL takes a long time
+- Connection pool near saturation
+
+**Remediation**:
+1. **Optimize now**: find the slowest SQL, check for missing indexes, run `EXPLAIN`, add an index or rewrite the query
+2. **Short term**: enlarge the connection pool, enable query cache, consider read/write splitting
+3. **Long term**: review slow-query logs regularly, optimize schema, build an indexing strategy, consider sharding
+
+### Cause 2: External API call timeouts
+**Symptoms**:
+- Third-party API calls in logs
+- A specific endpoint is slow
+- Network timeout errors
+- A downstream service is slow
+
+**Remediation**:
+1. **Set sane timeouts**: configure connect and read timeouts, avoid unbounded waits
+2. **Degrade**: open circuit breakers, return defaults or cached data, make non-critical calls async
+3. **Optimize calls**: parallelize independent calls, use batch APIs, add local caching
+
+### Cause 3: Code performance issues
+**Symptoms**:
+- High CPU usage
+- A specific code path is slow
+- Performance warnings in logs
+- No obvious external dependency issue
+
+**Remediation**:
+1. **Profile**: use an APM tool to find slow methods, inspect flame graphs
+2. **Optimize code**: fix loops/recursion, reduce object churn, use better data structures, avoid repeated computation
+3. **Async**: run non-critical logic asynchronously, decouple with a message queue
+
+### Cause 4: Cache miss or cache penetration
+**Symptoms**:
+- Cache hit ratio drops suddenly
+- Database query volume surges
+- Slowdown at specific times
+- Cache-miss records in logs
+
+**Remediation**:
+1. **Warm the cache**: preload hot data after restart, refresh on a schedule, avoid mass simultaneous expiry
+2. **Prevent penetration**: cache null values, use a Bloom filter, validate parameters against malicious queries
+3. **Optimize strategy**: set reasonable TTLs, use multi-level caching, add a cache-update mechanism
+
+### Cause 5: Insufficient system resources
+**Symptoms**:
+- High CPU or memory
+- Busy disk I/O
+- High network bandwidth usage
+- High system load
+
+**Remediation**:
+1. **Scale**: add instances (horizontal) or upgrade specs (vertical)
+2. **Load balancing**: check LB config, ensure even distribution, remove unhealthy instances
+3. **Throttle/degrade**: enable rate limiting, degrade non-core features, protect core business
+
+### Cause 6: Network issues
+**Symptoms**:
+- High cross-region latency
+- Increased packet loss
+- Network congestion at certain times
+- Network timeout errors in logs
+
+**Remediation**:
+1. **Network optimization**: use a CDN, optimize routing, enable HTTP/2 or QUIC
+2. **Access locality**: deploy multi-region instances, smart DNS, edge computing
+3. **Compress transfers**: enable GZIP, optimize payload format, reduce data volume
+
+## Emergency Actions
+
+### Immediate (within 5 minutes)
+1. **Scale out** if resources are insufficient
+2. **Rate limit** to protect the system
+3. **Degrade** non-core features
+4. **Restart** affected instances if it is a leak-type problem
+
+### Short term (within 30 minutes)
+1. **Locate the root cause** through log analysis
+2. **Quick optimization**: add caching, fix slow SQL, adjust timeouts
+3. **Monitor** response-time trends
+
+### Long term
+1. **Performance optimization** at the code level
+2. **Architecture optimization**: introduce caching, message queues, etc.
+3. **Better monitoring**: finer-grained performance metrics
+4. **Load testing** on a regular basis
+
+## Verification
+1. Confirm P99 response time drops to normal (< 1 second)
+2. Check that error rate has decreased
+3. Observe whether user complaints decline
+4. Monitor for 30 minutes to ensure stability
+
+## Performance Checklist
+- [ ] Do database queries use indexes?
+- [ ] Any N+1 query problems?
+- [ ] Is the cache strategy reasonable?
+- [ ] Do external API calls have timeouts?
+- [ ] Any unnecessary synchronous waits?
+- [ ] Is the log level too verbose?
+- [ ] Any large-object serialization?
+- [ ] Can network calls be batched?
+
+## Key Metrics
+- **Latency**: P50, P90, P99, P999
+- **Throughput**: QPS, TPS
+- **Error rate**: 4xx, 5xx ratios
+- **Resources**: CPU, memory, network, disk I/O
+- **Database**: slow-query count, connection pool usage
+- **Cache**: hit ratio, miss ratio
+
+## Related Alerts
+- `HighCPUUsage`: CPU usage too high
+- `HighMemoryUsage`: memory usage too high
+- `DatabaseSlowQuery`: database slow queries
+- `HighErrorRate`: error rate too high
+- `ServiceTimeout`: service timeout

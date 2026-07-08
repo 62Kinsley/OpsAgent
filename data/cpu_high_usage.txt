@@ -1,0 +1,113 @@
+# High CPU Usage Alert Runbook
+
+## Alert Definition
+- **Alert name**: `HighCPUUsage`
+- **Severity**: Critical
+- **Trigger condition**: CPU usage stays above 80% for more than 5 minutes
+
+## Problem Description
+When the CPU usage of a host or container stays above 80% for a sustained period, it may cause:
+- Slower application responses
+- More request timeouts
+- High system load
+- Potential cascading failures (avalanche effect)
+
+## Investigation Steps
+
+### Step 1: Determine the alert time window
+Establish the exact start time of the alert so that later log and metric queries target the correct time range.
+
+### Step 2: Query system metrics
+Query the `system-metrics` source for the last 30 minutes.
+- **Filter**: `level:ERROR OR cpu_usage:>80`
+- **Goal**: confirm which hosts/containers exceeded the CPU threshold and for how long.
+
+### Step 3: Identify CPU-consuming processes
+From the metrics/logs, focus on:
+- Process name and PID
+- CPU utilization percentage
+- Process start time
+- The service the process belongs to
+
+### Step 4: Query application logs
+Query `application-logs` over the same time range with filter `level:ERROR OR level:WARN` to correlate CPU spikes with application errors.
+
+## Common Root Causes
+
+### Cause 1: Infinite loop or unbounded recursion
+**Symptoms**:
+- A single process consumes nearly 100% CPU
+- Repeated error stack traces in application logs
+- Memory usage may grow at the same time
+
+**Remediation**:
+1. Restart the affected service instance immediately
+2. Inspect application logs to locate the offending code
+3. Roll back to the last stable version
+4. Notify the development team to fix the bug
+
+### Cause 2: Traffic surge
+**Symptoms**:
+- CPU rises evenly across multiple processes
+- Request volume clearly increases
+- Latency grows but without obvious errors
+
+**Remediation**:
+1. Check for marketing campaigns or unexpected traffic spikes
+2. Trigger auto-scaling to add instances
+3. If the traffic is malicious, enable rate limiting
+4. Monitor CPU usage after scaling out
+
+### Cause 3: Overlapping scheduled jobs
+**Symptoms**:
+- CPU usage rises periodically
+- Spikes appear at specific times
+- Scheduled-job execution records appear in logs
+
+**Remediation**:
+1. Review the cron/scheduler configuration
+2. Stagger job start times to avoid overlap
+3. Optimize job logic
+4. Add a mutex/lock to prevent concurrent runs
+
+### Cause 4: Slow database queries
+**Symptoms**:
+- Application CPU is high even though business logic is simple
+- Slow-query records appear in logs
+- Database connection pool utilization is high
+
+**Remediation**:
+1. Inspect the slow-query log
+2. Optimize the SQL or add indexes
+3. Check for full table scans
+4. Consider adding a cache layer
+
+## Emergency Actions
+
+### Immediate (within 5 minutes)
+1. **Scale out**: if it is a traffic issue, add instances immediately
+2. **Rate limit**: if malicious traffic is suspected, enable throttling rules
+3. **Restart**: if a single instance is faulty, restart that instance
+
+### Short term (within 30 minutes)
+1. Analyze logs to find the root cause
+2. Prepare a rollback if it is a code issue
+3. Adjust configuration if it is a config issue
+4. Keep monitoring CPU usage trends
+
+### Long term
+1. Optimize code performance
+2. Tune monitoring alert thresholds
+3. Improve the auto-scaling policy
+4. Run regular load tests
+
+## Verification
+1. Confirm CPU usage drops to a normal level (< 60%)
+2. Check that application latency has recovered
+3. Confirm no new error logs are produced
+4. Observe for 30 minutes to ensure the issue does not recur
+
+## Related Alerts
+- `HighMemoryUsage`: memory usage too high
+- `HighLoadAverage`: system load too high
+- `SlowResponse`: response time too long
