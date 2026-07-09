@@ -10,7 +10,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from utils.file_handler import list_dir_with_allowedtype_file,  get_file_md5_hex, txt_loader, pdf_loader
 from utils.path_tool import get_abs_path
 from utils.config_handler import chroma_yaml_to_dict 
-from utils.logger.handler import logger
+from utils.logger_handler import logger
 from model.factory import embedding_model 
 
 class VectorStore:
@@ -24,7 +24,7 @@ class VectorStore:
 
         self.spliter = RecursiveCharacterTextSplitter(
             chunk_size=chroma_yaml_to_dict["chunk_size"],
-            chunk_overlap=chroma_yaml_to_dict ["chunk_overlap"],
+            chunk_overlap=chroma_yaml_to_dict["chunk_overlap"],
             separators=chroma_yaml_to_dict["separators"],
             length_function=len,
         )
@@ -80,13 +80,15 @@ class VectorStore:
                         continue
                     
                     #2. chunk the document
-                 chunks_document: list[Document] = self.spliter.split_documents(documents)
+                    chunks_document: list[Document] = self.spliter.split_documents(documents)
 
                     if not chunks_document:
                         logger.warning(f"[chunk_document] No chunks found for {data_file_path}")
                         continue
                     
                     #store the chunks
+                    self.vector_store.add_documents(chunks_document)
+
                 except Exception as e:
                     logger.error(f"[load_split_store] Failed to load {data_file_path}: {e}", exc_info=True)
                     continue
