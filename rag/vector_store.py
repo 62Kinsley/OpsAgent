@@ -33,9 +33,10 @@ class VectorStore:
         pass
 
     def load_split_store(self, query):
+        
+        md5_path = get_abs_path(chroma_yaml_to_dict["md5_hex_store"])
 
-        def check_md5_hex(md5_hex: str):
-            md5_path = get_abs_path(chroma_yaml_to_dict["md5_hex_store"])
+        def check_md5_hex(md5_hex: str): 
             if not os.path.exists(md5_path):
                 open(md5_path, "w", encoding="utf-8").close()
                 return False
@@ -45,7 +46,10 @@ class VectorStore:
                         return True
             return False
 
-        
+        def save_md5_hex(md5_hex: str):
+            with open(md5_path, "a", encoding="utf-8") as f:
+                f.write(md5_hex + "\n")
+
         def load_document(file_path: str):
             if file_path.lower().endswith(".txt"):
                 return txt_loader(file_path)
@@ -86,8 +90,11 @@ class VectorStore:
                         logger.warning(f"[chunk_document] No chunks found for {data_file_path}")
                         continue
                     
-                    #store the chunks
+                    #3.store the chunks
                     self.vector_store.add_documents(chunks_document)
+
+                    #4. save md5
+                    save_md5_hex(md5_hex)
 
                 except Exception as e:
                     logger.error(f"[load_split_store] Failed to load {data_file_path}: {e}", exc_info=True)
