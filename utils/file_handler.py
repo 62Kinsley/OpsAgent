@@ -2,7 +2,7 @@ import os
 import hashlib
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
-from utils.logger.handler import logger
+from utils.logger_handler import logger
 
 
 def list_dir_with_allowedtype_file(dir_path:str,allowed_types:tuple[str]):  

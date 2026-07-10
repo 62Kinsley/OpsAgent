@@ -6,7 +6,8 @@ from langchain_core.embeddings import Embeddings
 from langchain.chat_models.base import BaseChatModel
 from langchain_qwq import ChatQwen
 from langchain_openai import OpenAIEmbeddings
-from utils.config_handler import rag_config, chroma_config, prompt_config, agent_config
+from langchain_huggingface import HuggingFaceEmbeddings
+from utils.config_handler import chroma_yaml_to_dict, rag_yaml_to_dict, prompt_yaml_to_dict, agent_yaml_to_dict
 
 load_dotenv()
 
@@ -18,9 +19,9 @@ class BaseModelFactory(ABC):#abstract base class
 class ChatModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
         return ChatQwen(
-                    model=rag_config["chat_model_name"],
+                    model=rag_yaml_to_dict["chat_model_name"],
                     api_key=os.getenv("DASHSCOPE_API_KEY"),
-                    base_url=rag_config["base_url"],
+                    base_url=rag_yaml_to_dict["base_url"],
                     max_tokens=3_000,
                     timeout=None,
                     max_retries=2,
@@ -28,14 +29,10 @@ class ChatModelFactory(BaseModelFactory):
     
 class EmbeddingModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
-        return OpenAIEmbeddings(
-                    model=rag_config["embedding_model_name"],
-                    base_url=rag_config["base_url"],
-                    api_key=os.getenv("DASHSCOPE_API_KEY"),
-                    dimensions=1024,
-                    tiktoken_enabled=False,
-                    check_embedding_ctx_length=False,
-                    chunk_size=10, 
+        return HuggingFaceEmbeddings(
+            model_name="BAAI/bge-small-zh-v1.5",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
         )
     
 

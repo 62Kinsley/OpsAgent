@@ -8,4 +8,5 @@ persist_directory: chroma_db
 
 chunk_size: 200
 chunk_overlap: 20
-separators: : ["\n\n","。",".","?","？","!"," ",""]
+top_k: 3
+separators: ["\n\n","。",".","?","？","!"," ",""]
