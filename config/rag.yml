@@ -1,4 +1,4 @@
-chat_model_name: qwen-max
+chat_model_name: qwen3.7-plus
 embedding_model_name: text-embedding-v1
 base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 

@@ -25,7 +25,7 @@ class ChatModelFactory(BaseModelFactory):
                     max_tokens=3_000,
                     timeout=None,
                     max_retries=2,
-                )
+                )  
     
 class EmbeddingModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
