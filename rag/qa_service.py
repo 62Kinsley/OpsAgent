@@ -12,12 +12,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 
 
-def print_prompt(prompt):
-    print("="*20)
-    print(prompt.to_string())
-    print("="*20)
-    return prompt
-    
 class QAService:
     def __init__(self):
         self.vector_store = VectorStore()
@@ -28,7 +22,7 @@ class QAService:
         self.chain = self._init_chain()
 
     def _init_chain(self):
-        chain = self.prompt_template | print_prompt | self.model | StrOutputParser()
+        chain = self.prompt_template | self.model | StrOutputParser()
         return chain
    
     def retriever_docs(self, query: str) -> list[Document]:
@@ -37,13 +31,15 @@ class QAService:
     def generate_answer(self, query: str) -> str:
 
         knowledge_chunk_docs = self.retriever_docs(query)
+        if not knowledge_chunk_docs:
+            return "No relevant knowledge found in the knowledge base."
         knowledge_text = ""
         counter = 0
 
         #must convert the knowledge_chunk_docs(list[Document]) to text format, because the model only accepts text input
         for chunk_doc in knowledge_chunk_docs:
             counter += 1
-            knowledge_text += f"[refer{counter} : refer {chunk_doc.page_content} | metadata:{chunk_doc.metadata}\n]"
+            knowledge_text += f"[refer{counter} : refer {chunk_doc.page_content}]"
 
         return self.chain.invoke(
             {
