@@ -1,1 +1,3 @@
 qa_rag_prompt_path: prompts/rag_qa_prompt.txt
+main_prompt_path: prompts/main_prompt.txt
+report_prompt_path: prompts/report_prompt.txt
