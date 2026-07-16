@@ -306,6 +306,31 @@ def qa_tool(query: str) -> str:
     return qa_service.generate_answer(query)
 
 
+# -----------------------------
+# Web search tool (real-time)
+# -----------------------------
+@tool(description="Search the public web for up-to-date technical information. Use only when qa_tool returns no relevant knowledge, or when the user needs external docs beyond the local runbook knowledge base. Returns a short list of titles, URLs, and snippets; an empty string means no results.")
+def web_search(query: str) -> str:
+    try:
+        from ddgs import DDGS
+
+        results = list(DDGS().text(query, max_results=5))
+        if not results:
+            logger.warning(f"[web_search] No results for query: {query}")
+            return ""
+
+        lines = []
+        for i, item in enumerate(results, start=1):
+            title = item.get("title", "")
+            href = item.get("href", "")
+            body = item.get("body", "")
+            lines.append(f"[{i}] {title}\nURL: {href}\nSnippet: {body}")
+        return "\n\n".join(lines)
+    except Exception as e:
+        logger.error(f"[web_search] Failed for query={query}: {e}", exc_info=True)
+        return ""
+
+
 
 # -----------------------------
 # Basic Context Tools
