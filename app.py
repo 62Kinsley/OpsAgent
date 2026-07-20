@@ -1,8 +1,6 @@
 import traceback
-import uuid
-
 import streamlit as st
-
+from utils import chat_store
 from agent.react_agent import ReactAgent
 
 
@@ -46,7 +44,20 @@ st.markdown(
     }
 
     html, body, [class*="css"] {
-        color: #111827;
+        color: #111827 !important;
+    }
+
+    /* Force readable dark text even if Streamlit is in dark mode */
+    .stApp, .stApp p, .stApp span, .stApp label,
+    .stApp div, .stMarkdown, [data-testid="stMarkdownContainer"],
+    [data-testid="stChatMessage"], [data-testid="stChatMessageContent"] {
+        color: #111827 !important;
+    }
+
+    [data-testid="stChatInput"] textarea,
+    [data-testid="stChatInput"] div[contenteditable="true"] {
+        color: #111827 !important;
+        background: #ffffff !important;
     }
 
     section[data-testid="stSidebar"] {
@@ -54,6 +65,10 @@ st.markdown(
         border-right: 1px solid #d9d9e3;
         min-width: 290px !important;
         max-width: 290px !important;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #111827 !important;
     }
 
     .sidebar-title {
@@ -185,32 +200,19 @@ st.markdown(
 # ----------------------------
 # Session init
 # ----------------------------
+
+chat_store.init_db()
+
 if "agent" not in st.session_state:
     st.session_state["agent"] = ReactAgent()
 
-if "conversations" not in st.session_state:
-    first_id = str(uuid.uuid4())
-    st.session_state["conversations"] = {
-        first_id: {
-            "title": "New chat",
-            "messages": [],
-        }
-    }
-    st.session_state["current_conversation_id"] = first_id
-
 if "current_conversation_id" not in st.session_state:
-    st.session_state["current_conversation_id"] = next(
-        iter(st.session_state["conversations"])
+    st.session_state["current_conversation_id"] = (
+        chat_store.ensure_at_least_one_conversation()
     )
 
 if "pending_prompt" not in st.session_state:
     st.session_state["pending_prompt"] = None
-
-
-def get_current_conversation():
-    conv_id = st.session_state["current_conversation_id"]
-    return st.session_state["conversations"][conv_id]
-
 
 def build_title_from_messages(messages: list[dict]) -> str:
     for msg in messages:
@@ -219,20 +221,15 @@ def build_title_from_messages(messages: list[dict]) -> str:
             return title[:22] + ("..." if len(title) > 22 else "")
     return "New chat"
 
-
 def create_new_conversation():
-    new_id = str(uuid.uuid4())
-    st.session_state["conversations"][new_id] = {
-        "title": "New chat",
-        "messages": [],
-    }
+    new_id = chat_store.create_conversation()
     st.session_state["current_conversation_id"] = new_id
     st.session_state["pending_prompt"] = None
-
 
 # ----------------------------
 # Sidebar: chat history
 # ----------------------------
+
 with st.sidebar:
     st.markdown('<div class="sidebar-title">OpsPilot</div>', unsafe_allow_html=True)
 
@@ -242,11 +239,11 @@ with st.sidebar:
 
     st.markdown("---")
 
-    conversation_ids = list(st.session_state["conversations"].keys())
+    conversations = chat_store.list_conversations()
 
-    for cid in reversed(conversation_ids):
-        title = st.session_state["conversations"][cid]["title"]
-        display_title = title if title.strip() else "New chat"
+    for conv in conversations:
+        cid = conv["id"]
+        display_title = conv["title"] if conv["title"].strip() else "New chat"
 
         if cid == st.session_state["current_conversation_id"]:
             st.markdown(
@@ -268,8 +265,8 @@ with st.sidebar:
 # ----------------------------
 # Main chat area
 # ----------------------------
-current_conv = get_current_conversation()
-messages = current_conv["messages"]
+current_id = st.session_state["current_conversation_id"]
+messages = chat_store.get_messages(current_id)
 
 st.markdown(
     """
@@ -371,12 +368,16 @@ else:
 
 
 # ----------------------------
-# Run agent (non-streaming via ReactAgent.run)
+# Run agent
 # ----------------------------
 if prompt:
-    current_conv = get_current_conversation()
-    current_conv["messages"].append({"role": "user", "content": prompt})
-    current_conv["title"] = build_title_from_messages(current_conv["messages"])
+    current_id = st.session_state["current_conversation_id"]
+
+    # UI persistence (optional but useful for sidebar / bubbles)
+    chat_store.add_message(current_id, "user", prompt)
+    history = chat_store.get_messages(current_id)
+    title = build_title_from_messages(history)
+    chat_store.update_title(current_id, title)
 
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -387,12 +388,18 @@ if prompt:
 
         try:
             with st.spinner("Analyzing..."):
-                full_response = st.session_state["agent"].run(prompt)
+                # Scheme B: only current prompt + thread_id
+                full_response = st.session_state["agent"].run(
+                    prompt,
+                    thread_id=current_id,
+                )
             placeholder.markdown(full_response)
         except Exception as e:
             traceback.print_exc()
             full_response = f"Runtime error: {type(e).__name__}: {e}"
             placeholder.error(full_response)
 
-    current_conv["messages"].append({"role": "assistant", "content": full_response})
-    current_conv["title"] = build_title_from_messages(current_conv["messages"])
+    # 4) save assistant reply to SQLite
+    chat_store.add_message(current_id, "assistant", full_response)
+    history = chat_store.get_messages(current_id)
+    chat_store.update_title(current_id, build_title_from_messages(history))

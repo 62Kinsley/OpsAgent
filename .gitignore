@@ -5,3 +5,7 @@ __pycache__/
 md5.txt
 .venv/
 logs/
+data/chat_history.db
+data/agent_checkpoints.db
+data/*.db-shm
+data/*.db-wal

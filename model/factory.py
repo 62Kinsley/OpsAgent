@@ -5,7 +5,7 @@ from typing import Optional
 from langchain_core.embeddings import Embeddings
 from langchain.chat_models.base import BaseChatModel
 from langchain_qwq import ChatQwen
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from utils.config_handler import chroma_yaml_to_dict, rag_yaml_to_dict, prompt_yaml_to_dict, agent_yaml_to_dict
 
@@ -18,6 +18,20 @@ class BaseModelFactory(ABC):#abstract base class
 
 class ChatModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
+        provider = rag_yaml_to_dict.get("chat_provider", "dashscope")
+
+        if provider == "ollama":
+            return ChatOpenAI(
+                model=rag_yaml_to_dict["chat_model_name"],
+                api_key="ollama",
+                base_url=rag_yaml_to_dict.get(
+                    "base_url", "http://localhost:11434/v1"
+                ),
+                max_tokens=3_000,
+                timeout=None,
+                max_retries=2,
+            )
+
         return ChatQwen(
                     model=rag_yaml_to_dict["chat_model_name"],
                     api_key=os.getenv("DASHSCOPE_API_KEY"),
